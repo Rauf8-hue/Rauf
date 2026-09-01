@@ -1,0 +1,6 @@
+{
+  "name": "AI Agent",
+  "description": "AI Agent for Developers by Rauf — Your AI Coding Partner & Command Center",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
