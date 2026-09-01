@@ -111,6 +111,7 @@ fun ChatScreen(
     val messages by viewModel.currentMessages.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
     val streamingText by viewModel.streamingText.collectAsState()
+    val activeStreamingIntent by viewModel.activeStreamingIntent.collectAsState()
     val selectedMode by viewModel.selectedMode.collectAsState()
     val experienceLevel by viewModel.preferencesManager.experienceLevel.collectAsState()
     val activeProvider by viewModel.preferencesManager.activeProvider.collectAsState()
@@ -248,6 +249,7 @@ fun ChatScreen(
                         AssistantStreamingBubble(
                             text = streamingText,
                             fontSizeSp = fontSizeSp,
+                            intent = activeStreamingIntent,
                             onCopyCode = { code -> viewModel.copyToClipboard(code) }
                         )
                     }
@@ -604,7 +606,7 @@ fun ChatMessageBubble(
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
         ) {
             Text(
-                text = if (isUser) "YOU" else "AI AGENT (Rauf Engine)",
+                text = if (isUser) "YOU" else "AI AGENT",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -621,7 +623,7 @@ fun ChatMessageBubble(
                         .padding(horizontal = 4.dp, vertical = 1.dp)
                 ) {
                     Text(
-                        text = message.requestType,
+                        text = "[ ${message.requestType} ]",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold),
                         color = NeonGreen
                     )
@@ -671,6 +673,7 @@ fun ChatMessageBubble(
 fun AssistantStreamingBubble(
     text: String,
     fontSizeSp: Int,
+    intent: com.example.ai.IntentAnalysis? = null,
     onCopyCode: (String) -> Unit
 ) {
     Column(
@@ -688,7 +691,7 @@ fun AssistantStreamingBubble(
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
-                text = "STREAMING RESPONSE...",
+                text = intent?.getFormattedModeIndicator() ?: "AI AGENT [ STREAMING ]",
                 style = MaterialTheme.typography.labelSmall.copy(
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -706,7 +709,7 @@ fun AssistantStreamingBubble(
                 .padding(12.dp)
         ) {
             MarkdownViewer(
-                content = text.ifBlank { "Analyzing coding parameters..." },
+                content = text.ifBlank { "Processing request..." },
                 fontSizeSp = fontSizeSp,
                 onCopyCode = onCopyCode
             )

@@ -212,6 +212,7 @@ fun ModeSelectorBar(
 ) {
     val modes = listOf(
         RequestType.AUTO,
+        RequestType.GENERAL,
         RequestType.CODE,
         RequestType.PROMPT,
         RequestType.EXPLAIN,

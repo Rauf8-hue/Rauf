@@ -27,12 +27,12 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
         .build()
 
     fun streamAIResponse(request: AIRequest): Flow<AIResponseChunk> = flow {
-        val detectedType = RequestClassifier.detectRequestType(request.prompt, request.requestType)
+        val intent = request.intentAnalysis ?: RequestClassifier.analyzeIntent(request.prompt, request.requestType)
         val provider = preferencesManager.getActiveProvider()
         val customKey = preferencesManager.getApiKeyForProvider(provider.id)
         val model = preferencesManager.getModelForProvider(provider.id)
         val systemPrompt = RequestClassifier.buildSystemInstruction(
-            type = detectedType,
+            intent = intent,
             experienceLevel = request.experienceLevel,
             projectContext = request.projectContext,
             currentFileContent = request.currentFileContent,
@@ -52,7 +52,7 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
 
         if (effectiveKey.isBlank() && provider != AIProviderType.CUSTOM) {
             // No API Key configured -> use BuiltIn Knowledge Engine
-            val localResponse = BuiltInKnowledgeEngine.generateLocalResponse(request, detectedType)
+            val localResponse = BuiltInKnowledgeEngine.generateLocalResponse(request, intent)
             val chunks = localResponse.split(" ")
             var accumulated = ""
             for (i in chunks.indices) {
@@ -60,7 +60,8 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
                 emit(
                     AIResponseChunk(
                         text = accumulated,
-                        detectedType = detectedType,
+                        detectedType = intent.requestType,
+                        intentAnalysis = intent,
                         codeBlocks = extractCodeBlocks(accumulated),
                         isComplete = (i == chunks.size - 1),
                         providerUsed = "Built-in AI Engine (${provider.displayName})",
@@ -78,7 +79,7 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
         try {
             when (provider) {
                 AIProviderType.GEMINI -> {
-                    callGeminiApi(effectiveKey, model, systemPrompt, request, detectedType) { chunkText ->
+                    callGeminiApi(effectiveKey, model, systemPrompt, request, intent.requestType) { chunkText ->
                         fullText = chunkText
                     }
                 }
@@ -90,7 +91,10 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
             }
 
             if (fullText.isBlank()) {
-                fullText = BuiltInKnowledgeEngine.generateLocalResponse(request, detectedType)
+                fullText = BuiltInKnowledgeEngine.generateLocalResponse(request, intent)
+            } else {
+                // Validate response against intent
+                fullText = validateAndFormatResponse(fullText, intent)
             }
 
             // Stream response to UI
@@ -102,7 +106,8 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
                 emit(
                     AIResponseChunk(
                         text = accumulated,
-                        detectedType = detectedType,
+                        detectedType = intent.requestType,
+                        intentAnalysis = intent,
                         codeBlocks = extractCodeBlocks(accumulated),
                         isComplete = isDone,
                         providerUsed = provider.displayName,
@@ -115,11 +120,12 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
             }
         } catch (e: Exception) {
             Log.e("AIProviderManager", "API Error, falling back to local engine: ${e.message}", e)
-            val fallback = BuiltInKnowledgeEngine.generateLocalResponse(request, detectedType)
+            val fallback = BuiltInKnowledgeEngine.generateLocalResponse(request, intent)
             emit(
                 AIResponseChunk(
                     text = fallback,
-                    detectedType = detectedType,
+                    detectedType = intent.requestType,
+                    intentAnalysis = intent,
                     codeBlocks = extractCodeBlocks(fallback),
                     isComplete = true,
                     providerUsed = "${provider.displayName} (Offline Fallback)",
@@ -128,6 +134,21 @@ class AIProviderManager(private val preferencesManager: PreferencesManager) {
             )
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun validateAndFormatResponse(response: String, intent: IntentAnalysis): String {
+        // If prompt was requested, ensure it doesn't just output raw code without prompt markdown framing
+        if (intent.isPromptRequested && !response.contains("###") && !response.contains("```markdown") && !response.contains("# Role")) {
+            return """
+                ### 📋 COPY-PASTE PROMPT
+                
+                ```markdown
+                $response
+                ```
+            """.trimIndent()
+        }
+        return response
+    }
+
 
     private suspend fun callGeminiApi(
         apiKey: String,

@@ -78,6 +78,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _streamingText = MutableStateFlow("")
     val streamingText: StateFlow<String> = _streamingText.asStateFlow()
 
+    private val _activeStreamingIntent = MutableStateFlow<com.example.ai.IntentAnalysis?>(null)
+    val activeStreamingIntent: StateFlow<com.example.ai.IntentAnalysis?> = _activeStreamingIntent.asStateFlow()
+
     // Connection Test State
     private val _connectionTestResult = MutableStateFlow<ConnectionTestResult?>(null)
     val connectionTestResult: StateFlow<ConnectionTestResult?> = _connectionTestResult.asStateFlow()
@@ -324,7 +327,7 @@ export const TerminalHeader: React.FC<Props> = ({ title, author }) => (
         if (promptText.isBlank()) return
 
         val targetMode = overrideMode ?: _selectedMode.value
-        val detectedType = RequestClassifier.detectRequestType(promptText, targetMode)
+        val intentAnalysis = RequestClassifier.analyzeIntent(promptText, targetMode)
         val imageBase64 = _attachedImageBase64.value
         _attachedImageBase64.value = null // consume
 
@@ -348,7 +351,7 @@ export const TerminalHeader: React.FC<Props> = ({ title, author }) => (
                     sessionId = sId,
                     role = "user",
                     content = promptText,
-                    requestType = detectedType.name
+                    requestType = intentAnalysis.displayBadge
                 )
             )
 
@@ -359,17 +362,19 @@ export const TerminalHeader: React.FC<Props> = ({ title, author }) => (
 
             val aiRequest = AIRequest(
                 prompt = promptText,
-                requestType = detectedType,
+                requestType = intentAnalysis.requestType,
                 experienceLevel = preferencesManager.getExperienceLevel().name,
                 projectContext = activeProject?.memoryNotes,
                 currentFileContent = activeFile?.content,
                 currentFileName = activeFile?.name,
                 attachedImageBase64 = imageBase64,
-                chatHistory = history
+                chatHistory = history,
+                intentAnalysis = intentAnalysis
             )
 
             _isGenerating.value = true
             _streamingText.value = ""
+            _activeStreamingIntent.value = intentAnalysis
 
             try {
                 var finalOutput = ""
@@ -384,7 +389,7 @@ export const TerminalHeader: React.FC<Props> = ({ title, author }) => (
                         sessionId = sId,
                         role = "assistant",
                         content = finalOutput,
-                        requestType = detectedType.name
+                        requestType = intentAnalysis.displayBadge
                     )
                 )
                 db.chatDao().updateSession(
@@ -400,12 +405,14 @@ export const TerminalHeader: React.FC<Props> = ({ title, author }) => (
                         sessionId = sId,
                         role = "assistant",
                         content = "⚠️ AI Connection encountered an error: ${e.message}\nCheck your API key in Settings or use Built-in mode.",
-                        isError = true
+                        isError = true,
+                        requestType = intentAnalysis.displayBadge
                     )
                 )
             } finally {
                 _isGenerating.value = false
                 _streamingText.value = ""
+                _activeStreamingIntent.value = null
             }
         }
     }

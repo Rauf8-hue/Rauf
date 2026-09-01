@@ -2,186 +2,178 @@ package com.example.ai
 
 object RequestClassifier {
 
+    fun analyzeIntent(input: String, selectedMode: RequestType): IntentAnalysis {
+        val trimmed = input.trim()
+        val text = trimmed.lowercase()
+
+        // 1. Language / Technology Detection
+        val detectedLanguage = detectLanguage(text)
+
+        // 2. Check for PROMPT Generation Request
+        val isPromptRequested = text.startsWith("give me a prompt") ||
+                text.startsWith("create a prompt") ||
+                text.startsWith("write a prompt") ||
+                text.startsWith("generate a prompt") ||
+                text.startsWith("provide a prompt") ||
+                text.startsWith("prompt for") ||
+                text.startsWith("prompt to") ||
+                text.contains("system prompt") ||
+                text.contains("ai studio prompt") ||
+                text.contains("master prompt") ||
+                text.contains("prompt specification")
+
+        // 3. Check for Full Multi-File Project Request
+        val isMultiFileProjectRequested = text.startsWith("build me a complete project") ||
+                text.startsWith("build a complete project") ||
+                text.startsWith("create a complete project") ||
+                text.startsWith("build me a full project") ||
+                text.startsWith("create the full application") ||
+                text.startsWith("build this as a production application") ||
+                text.startsWith("give me all files") ||
+                text.startsWith("create the project structure") ||
+                text.startsWith("build a full stack") ||
+                text.contains("complete multi-file project") ||
+                text.contains("scaffold full project")
+
+        // 4. Check for Code Review Request
+        val isCodeReviewRequested = (text.startsWith("review") ||
+                text.contains("code review") ||
+                text.contains("audit this code") ||
+                text.contains("check my code") ||
+                text.contains("find vulnerabilities in this code") ||
+                text.contains("analyze code quality")) &&
+                !isPromptRequested
+
+        // 5. Check for Debugging Request
+        val isDebugRequested = (text.startsWith("why am i getting this error") ||
+                text.startsWith("fix this error") ||
+                text.startsWith("fix this bug") ||
+                text.startsWith("debug this") ||
+                text.startsWith("fix my code") ||
+                text.startsWith("debug:") ||
+                text.contains("syntaxerror") ||
+                text.contains("nullpointerexception") ||
+                text.contains("typeerror:") ||
+                text.contains("failed to compile") ||
+                text.contains("traceback (most recent call last)")) &&
+                !isPromptRequested
+
+        // 6. Check for Simple Math or General Question
+        val isMath = isMathExpression(text)
+        val isGeneralQuestion = isMath || isGeneralKnowledgeQuestion(text)
+
+        // Determine Effective Request Type
+        val requestType: RequestType = when {
+            selectedMode != RequestType.AUTO -> selectedMode
+            isPromptRequested -> RequestType.PROMPT
+            isCodeReviewRequested -> RequestType.REVIEW
+            isDebugRequested -> RequestType.DEBUG
+            isMultiFileProjectRequested -> RequestType.PROJECT
+            isGeneralQuestion -> RequestType.GENERAL
+            text.startsWith("explain") || text.startsWith("what does this code do") || text.startsWith("how does this work") -> RequestType.EXPLAIN
+            text.startsWith("optimize") || text.startsWith("refactor") || text.contains("make it faster") -> RequestType.OPTIMIZE
+            text.contains("convert to") || text.contains("translate to") || text.contains("rewrite in") -> RequestType.CONVERT
+            text.startsWith("test") || text.contains("write unit tests") || text.contains("generate tests") -> RequestType.TESTS
+            text.contains("game") || text.contains("unity") || text.contains("three.js") || text.contains("godot") -> RequestType.GAME_DEV
+            text.startsWith("git ") || text.contains("merge conflict") || text.contains("git rebase") || text.contains("git commit") -> RequestType.GIT
+            text.startsWith("terminal") || text.startsWith("command to") || text.contains("shell command") || text.contains("bash command") -> RequestType.TERMINAL
+            text.contains("sql query") || text.contains("database schema") || text.contains("mongodb") || text.contains("postgresql") -> RequestType.DATABASE
+            text.contains("rest api") || text.contains("fastapi endpoint") || text.contains("crud endpoints") -> RequestType.API
+            text.startsWith("learn") || text.startsWith("teach me") || text.startsWith("roadmap for") -> RequestType.LEARN
+            text.startsWith("write ") || text.startsWith("create ") || text.startsWith("provide ") || text.startsWith("code ") || text.contains("calculator") || detectedLanguage != null -> RequestType.CODE
+            else -> RequestType.GENERAL
+        }
+
+        // Build Display Badge formatted strictly as requested (e.g. GENERAL, CODE • PYTHON, CODE • BASH, DEBUG, PROMPT, REVIEW)
+        val displayBadge = buildDisplayBadge(requestType, detectedLanguage)
+
+        return IntentAnalysis(
+            requestType = requestType,
+            detectedLanguage = detectedLanguage,
+            isGeneralQuestion = (requestType == RequestType.GENERAL),
+            isSimpleRequest = isMath || (requestType == RequestType.GENERAL) || (requestType == RequestType.CODE && !isMultiFileProjectRequested),
+            isMultiFileProjectRequested = isMultiFileProjectRequested || (requestType == RequestType.PROJECT),
+            isPromptRequested = isPromptRequested || (requestType == RequestType.PROMPT),
+            isCodeReviewRequested = isCodeReviewRequested || (requestType == RequestType.REVIEW),
+            isDebugRequested = isDebugRequested || (requestType == RequestType.DEBUG),
+            displayBadge = displayBadge
+        )
+    }
+
+    private fun detectLanguage(text: String): String? {
+        return when {
+            text.contains("python") || text.contains("py ") || text.endsWith(".py") || text.contains("fastapi") || text.contains("django") || text.contains("flask") -> "PYTHON"
+            text.contains("bash") || text.contains("shell script") || text.contains("sh script") || text.contains("zsh") || text.contains("terminal script") || text.contains("shell") -> "BASH"
+            text.contains("react") || text.contains("jsx") || text.contains("tsx") -> "REACT"
+            text.contains("typescript") || text.contains("ts ") || text.endsWith(".ts") -> "TYPESCRIPT"
+            text.contains("javascript") || text.contains("js ") || text.endsWith(".js") || text.contains("node") || text.contains("express") -> "JAVASCRIPT"
+            text.contains("kotlin") || text.contains("compose") || text.endsWith(".kt") -> "KOTLIN"
+            text.contains("java") && !text.contains("javascript") -> "JAVA"
+            text.contains("c++") || text.contains("cpp") -> "C++"
+            text.contains("rust") -> "RUST"
+            text.contains("golang") || text.contains("go language") || (text.contains("go ") && text.contains("code")) -> "GO"
+            text.contains("sql") || text.contains("sqlite") || text.contains("postgres") || text.contains("mysql") -> "SQL"
+            text.contains("html") || text.contains("css") || text.contains("tailwind") -> "HTML/CSS"
+            text.contains("swift") || text.contains("swiftui") -> "SWIFT"
+            text.contains("php") -> "PHP"
+            text.contains("ruby") -> "RUBY"
+            text.contains("c#") || text.contains("csharp") -> "C#"
+            else -> null
+        }
+    }
+
+    private fun isMathExpression(text: String): Boolean {
+        val clean = text.replace("what is", "").replace("what's", "").replace("calculate", "").replace("evaluate", "").replace("?", "").trim()
+        val mathPattern = Regex("^([0-9]+(\\.[0-9]+)?\\s*([+\\-*/%^xX]|plus|minus|times|divided by)\\s*)+[0-9]+(\\.[0-9]+)?$")
+        return mathPattern.matches(clean) || clean.matches(Regex("^[0-9\\s+\\-*/().^]+$")) && clean.any { it.isDigit() } && clean.any { "+-*/^%".contains(it) }
+    }
+
+    private fun isGeneralKnowledgeQuestion(text: String): Boolean {
+        // Plain informational questions that do not ask for code generation
+        val isExplicitCodeRequest = text.startsWith("write") || text.startsWith("create") || text.startsWith("build") || text.startsWith("code") || text.startsWith("give me a script") || text.startsWith("provide a script")
+        if (isExplicitCodeRequest) return false
+
+        return text.startsWith("what is ") ||
+                text.startsWith("what's ") ||
+                text.startsWith("who invented") ||
+                text.startsWith("who is") ||
+                text.startsWith("why is") ||
+                text.startsWith("how does") ||
+                text.startsWith("when was") ||
+                text.startsWith("tell me about") ||
+                text.contains("difference between") ||
+                text.startsWith("explain ") && !text.contains("this code") && !text.contains("my code") ||
+                text.matches(Regex("^[a-zA-Z\\s?]+$")) && (text.contains("ram") || text.contains("rom") || text.contains("cpu") || text.contains("internet") || text.contains("compiler") || text.contains("recursion"))
+    }
+
+    private fun buildDisplayBadge(requestType: RequestType, language: String?): String {
+        return when (requestType) {
+            RequestType.GENERAL -> "GENERAL"
+            RequestType.CODE -> if (language != null) "CODE • $language" else "CODE"
+            RequestType.PROMPT -> "PROMPT"
+            RequestType.DEBUG -> "DEBUG"
+            RequestType.REVIEW -> "REVIEW"
+            RequestType.EXPLAIN -> if (language != null) "EXPLAIN • $language" else "EXPLAIN"
+            RequestType.PROJECT -> if (language != null) "PROJECT • $language" else "PROJECT"
+            RequestType.LEARN -> "LEARN"
+            RequestType.OPTIMIZE -> "OPTIMIZE"
+            RequestType.CONVERT -> "CONVERT"
+            RequestType.TESTS -> "TESTS"
+            RequestType.GAME_DEV -> "GAME DEV"
+            RequestType.DATABASE -> "DATABASE"
+            RequestType.GIT -> "GIT"
+            RequestType.TERMINAL -> if (language != null) "TERMINAL • $language" else "TERMINAL"
+            RequestType.API -> "API"
+            RequestType.AUTO -> "GENERAL"
+        }
+    }
+
     fun detectRequestType(input: String, selectedMode: RequestType): RequestType {
-        if (selectedMode != RequestType.AUTO) {
-            return selectedMode
-        }
-
-        val text = input.trim().lowercase()
-
-        // 1. Check for explicit PROMPT request (Critical: Never confuse prompt with code)
-        if (text.startsWith("give me a prompt") ||
-            text.startsWith("create a prompt") ||
-            text.startsWith("write a prompt") ||
-            text.startsWith("generate a prompt") ||
-            text.startsWith("prompt for") ||
-            text.contains("system prompt") ||
-            text.contains("ai studio prompt") ||
-            text.contains("master prompt") ||
-            text.contains("prompt to build") ||
-            text.contains("prompt to create")
-        ) {
-            return RequestType.PROMPT
-        }
-
-        // 2. Check for DEBUG / FIX BUG
-        if (text.contains("error") ||
-            text.contains("exception") ||
-            text.contains("stack trace") ||
-            text.contains("fix this bug") ||
-            text.contains("fix error") ||
-            text.contains("failed to compile") ||
-            text.contains("crash") ||
-            text.contains("not defined") ||
-            text.contains("nullpointer") ||
-            text.contains("syntaxerror") ||
-            text.startsWith("debug") ||
-            text.startsWith("fix")
-        ) {
-            return RequestType.DEBUG
-        }
-
-        // 3. Check for EXPLAIN
-        if (text.startsWith("explain") ||
-            text.startsWith("what does this code do") ||
-            text.startsWith("how does this work") ||
-            text.contains("explain line by line") ||
-            text.contains("explain like i'm a beginner") ||
-            text.contains("what is the difference between") ||
-            text.contains("explain this concept")
-        ) {
-            return RequestType.EXPLAIN
-        }
-
-        // 4. Check for BUILD PROJECT
-        if (text.startsWith("build me a project") ||
-            text.startsWith("create a project") ||
-            text.startsWith("scaffold") ||
-            text.startsWith("full project") ||
-            text.startsWith("build me a full") ||
-            text.startsWith("build a complete website") ||
-            text.contains("folder structure") ||
-            text.contains("multi-file project")
-        ) {
-            return RequestType.PROJECT
-        }
-
-        // 5. Check for CODE CONVERSION
-        if (text.contains("convert to") ||
-            text.contains("translate to") ||
-            text.contains("rewrite in") ||
-            text.contains("from python to") ||
-            text.contains("from javascript to") ||
-            text.contains("from java to") ||
-            text.contains("to typescript") ||
-            text.contains("to kotlin") ||
-            text.contains("to react")
-        ) {
-            return RequestType.CONVERT
-        }
-
-        // 6. Check for CODE REVIEW
-        if (text.startsWith("review") ||
-            text.contains("code review") ||
-            text.contains("security audit") ||
-            text.contains("check my code") ||
-            text.contains("find vulnerabilities")
-        ) {
-            return RequestType.REVIEW
-        }
-
-        // 7. Check for OPTIMIZE
-        if (text.startsWith("optimize") ||
-            text.startsWith("refactor") ||
-            text.contains("make it faster") ||
-            text.contains("reduce memory") ||
-            text.contains("improve performance")
-        ) {
-            return RequestType.OPTIMIZE
-        }
-
-        // 8. Check for TESTS
-        if (text.startsWith("test") ||
-            text.contains("write unit tests") ||
-            text.contains("generate tests") ||
-            text.contains("test cases") ||
-            text.contains("jest tests") ||
-            text.contains("pytest") ||
-            text.contains("junit")
-        ) {
-            return RequestType.TESTS
-        }
-
-        // 9. Check for GAME DEV
-        if (text.contains("game") ||
-            text.contains("unity") ||
-            text.contains("unreal") ||
-            text.contains("godot") ||
-            text.contains("three.js") ||
-            text.contains("webgl") ||
-            text.contains("player controller")
-        ) {
-            return RequestType.GAME_DEV
-        }
-
-        // 10. Check for GIT
-        if (text.startsWith("git ") ||
-            text.contains("merge conflict") ||
-            text.contains("git commit") ||
-            text.contains("git push") ||
-            text.contains("git rebase") ||
-            text.contains("github pull request")
-        ) {
-            return RequestType.GIT
-        }
-
-        // 11. Check for TERMINAL
-        if (text.startsWith("terminal") ||
-            text.startsWith("command to") ||
-            text.startsWith("bash script") ||
-            text.contains("shell command") ||
-            text.contains("npm run") ||
-            text.contains("how to run in terminal")
-        ) {
-            return RequestType.TERMINAL
-        }
-
-        // 12. Check for DATABASE
-        if (text.contains("sql query") ||
-            text.contains("database schema") ||
-            text.contains("mongodb") ||
-            text.contains("postgresql") ||
-            text.contains("sqlite") ||
-            text.contains("firestore")
-        ) {
-            return RequestType.DATABASE
-        }
-
-        // 13. Check for API
-        if (text.contains("rest api") ||
-            text.contains("fastapi") ||
-            text.contains("express endpoint") ||
-            text.contains("crud endpoints") ||
-            text.contains("swagger")
-        ) {
-            return RequestType.API
-        }
-
-        // 14. Check for LEARN
-        if (text.startsWith("learn") ||
-            text.startsWith("teach me") ||
-            text.startsWith("roadmap for") ||
-            text.contains("beginner tutorial") ||
-            text.contains("lesson on")
-        ) {
-            return RequestType.LEARN
-        }
-
-        return RequestType.CODE
+        return analyzeIntent(input, selectedMode).requestType
     }
 
     fun buildSystemInstruction(
-        type: RequestType,
+        intent: IntentAnalysis,
         experienceLevel: String,
         projectContext: String? = null,
         currentFileContent: String? = null,
@@ -189,163 +181,99 @@ object RequestClassifier {
     ): String {
         val levelGuide = when (experienceLevel.lowercase()) {
             "beginner" -> """
-                - PRIMARY AUDIENCE: BEGINNER DEVELOPER.
-                - Explain technical concepts and jargon simply with relatable analogies.
-                - Provide clear step-by-step instructions.
-                - Tell the user EXACTLY where to paste the code, how to create the file, and how to install dependencies.
-                - Provide clear terminal commands with explanation of what each flag or tool does (e.g. explain `npm install`).
-                - Point out common pitfalls and beginner traps.
+                - USER EXPERIENCE LEVEL: BEGINNER.
+                - Use friendly, accessible explanations without overwhelming jargon.
+                - When code is requested, provide clear step-by-step instructions and exact terminal run commands.
+                - Explain what the code does simply.
+                - Note: Beginner level changes the explanation depth, NOT the requested task!
             """.trimIndent()
             "intermediate" -> """
-                - AUDIENCE: INTERMEDIATE DEVELOPER.
-                - Provide clean architecture, modular file structures, and robust typing.
-                - Include performance considerations, API error handling, and testability.
+                - USER EXPERIENCE LEVEL: INTERMEDIATE.
+                - Provide clean architecture, modularity, idiomatic code, and appropriate error handling.
                 - Keep explanations concise and focused on design choices.
             """.trimIndent()
             else -> """
-                - AUDIENCE: ADVANCED DEVELOPER.
+                - USER EXPERIENCE LEVEL: ADVANCED.
                 - Focus on high performance, enterprise architecture, security hardening, and clean abstractions.
                 - Minimal boilerplate explanation; focus on architectural trade-offs and edge cases.
             """.trimIndent()
         }
 
-        val typeGuide = when (type) {
-            RequestType.PROMPT -> """
-                CRITICAL DIRECTIVE: The user asked for a PROMPT (Prompt Engineering Request).
-                DO NOT return executable code.
-                Instead, construct a comprehensive, master copy-paste prompt specification with the following structured sections:
-                
+        val typeDirective = when {
+            intent.isPromptRequested -> """
+                CRITICAL DIRECTIVE — PROMPT GENERATION MODE:
+                The user asked for a PROMPT (Prompt Engineering Request).
+                DO NOT generate application code! DO NOT return implementation code!
+                Construct a copy-paste-ready master prompt specification formatted in markdown.
+                Include:
                 ### 📋 COPY-PASTE PROMPT
                 ```markdown
-                # System Role & Persona
-                [Specific AI Role]
-                
-                # Objective
-                [Core Goal]
-                
-                # Technology Stack
-                [Languages, Frameworks, Libraries]
-                
-                # Functional Specifications & Features
-                [Bullet list of required features]
-                
-                # Architecture & Project File Structure
-                [Proposed directory layout]
-                
-                # UI/UX & Styling Requirements
-                [Visual guidelines, responsiveness, palette]
-                
-                # Error Handling & Edge Cases
-                [Resilience guidelines]
-                
-                # Final Output Requirements
-                [Exact delivery format]
+                # Role & Objective
+                # Tech Stack
+                # Functional Specifications
+                # Architecture & File Structure
+                # Styling & UI Requirements
+                # Edge Cases & Error Handling
                 ```
-                
-                ### 💡 What This Prompt Does & How to Use It
-                [Explain where to paste this prompt in Google AI Studio, Gemini, or Coding Agents]
             """.trimIndent()
 
-            RequestType.DEBUG -> """
-                The user has an ERROR / DEBUGGING request. Structure your answer strictly as:
+            intent.isCodeReviewRequested -> """
+                CRITICAL DIRECTIVE — CODE REVIEW MODE:
+                The user explicitly asked to review or audit code.
+                Perform a structured code review evaluating:
+                - Code Quality & Clean Code principles
+                - Security vulnerabilities & sensitive data handling
+                - Performance bottlenecks & optimizations
+                - Error handling & edge cases
+                Format findings with clear severity tags: [CRITICAL], [HIGH], [MEDIUM], [LOW].
+            """.trimIndent()
+
+            intent.isDebugRequested -> """
+                CRITICAL DIRECTIVE — DEBUG MODE:
+                The user has an error or debugging request.
+                Structure your answer strictly as:
                 ### 🐞 Problem Identified
-                [Clear 1-sentence statement of the issue]
-
+                [1-2 sentence summary of the issue]
                 ### 🔍 Why It Happened
-                [Root cause analysis in plain, accessible terms]
-
-                ### 🛠 Exact Fix & Terminal Commands
-                [Step-by-step commands to install missing modules, fix permissions, or configure paths]
-
+                [Root cause analysis]
+                ### 🛠 Fix & Commands
+                [Step-by-step fix commands or package installations]
                 ### 💻 Corrected Code
                 ```[language]
-                [Clean working code snippet]
+                [Clean working code]
                 ```
-
-                ### 🛡 How to Prevent This in Future
-                [Best practice preventive guidelines]
             """.trimIndent()
 
-            RequestType.PROJECT -> """
-                The user wants to BUILD A FULL PROJECT. Provide a complete architectural breakdown:
-                ### 🏗 Project Overview & Architecture
-                [Tech stack selection and key components]
-
-                ### 📁 Folder & File Structure
-                ```
-                project-root/
-                ├── ...
-                ```
-
-                ### 📦 Dependencies & Installation
-                [Exact terminal commands]
-
-                ### 💻 Core Files Implementation
-                [Provide separate, complete code blocks for each essential file with file header `### File: path/name.ext`]
-
-                ### 🚀 Setup & Run Instructions
-                [Step-by-step execution guide]
-
-                ### 🔮 Next Steps & Enhancements
-                [Recommended follow-up features]
+            intent.isGeneralQuestion -> """
+                CRITICAL DIRECTIVE — GENERAL QUESTION MODE:
+                The user is asking a general question, math problem, or conceptual query.
+                - Answer the user's actual question directly, accurately, and naturally.
+                - For math (e.g. "What is 2+2?"), simply answer the calculation directly (e.g. "2 + 2 = 4.").
+                - Do NOT produce code blocks, folder structures, or architecture unless specifically asked.
+                - NEVER activate Code Review, Security Audit, or Performance Audit for normal general questions.
             """.trimIndent()
 
-            RequestType.EXPLAIN -> """
-                The user wants a CODE EXPLANATION. Provide:
-                ### 💡 High-Level Summary
-                [What the code does in 2-3 simple sentences]
-
-                ### 🔍 Line-by-Line / Component Breakdown
-                [Walkthrough of the key sections]
-
-                ### ⚠️ Potential Bottlenecks or Edge Cases
-                [What could break or cause unexpected behavior]
-
-                ### 🌟 Pro Tips & Improvements
-                [How to make it cleaner, safer, or more idiomatic]
-            """.trimIndent()
-
-            RequestType.REVIEW -> """
-                The user wants a CODE REVIEW. Audit for:
-                - Security vulnerabilities & sensitive data leaks
-                - Performance bottlenecks & unnecessary re-renders/allocations
-                - Maintainability, naming & clean code principles
-                - Error handling & edge cases
-                Format findings with Severity Tags: [CRITICAL], [HIGH], [MEDIUM], [LOW].
-            """.trimIndent()
-
-            RequestType.OPTIMIZE -> """
-                The user wants CODE OPTIMIZATION & REFACTORING.
+            intent.isMultiFileProjectRequested -> """
+                CRITICAL DIRECTIVE — COMPLETE PROJECT MODE:
+                The user explicitly requested a complete multi-file project or application structure.
                 Provide:
-                ### ⏱ Before vs After Analysis
-                ### 💻 Refactored Code
-                ```[language]
-                [Optimized code]
-                ```
-                ### 📈 Key Improvements & Benchmarks
-                [Explain why the new version is faster/cleaner without breaking functionality]
-            """.trimIndent()
-
-            RequestType.CONVERT -> """
-                The user wants CODE CONVERSION.
-                Provide the translated code with equivalent idiomatic constructs, note any external library differences, and highlight manual adjustments needed.
-            """.trimIndent()
-
-            RequestType.TESTS -> """
-                The user wants AUTOMATED TESTS.
-                Generate comprehensive Unit & Integration test suites, covering happy paths, edge cases, error conditions, and mock dependencies.
+                ### 🏗 Project Overview & Architecture
+                ### 📁 Folder & File Structure
+                ### 📦 Dependencies & Installation
+                ### 💻 Core Files Implementation (separate code blocks per file with headers)
+                ### 🚀 Setup & Run Instructions
             """.trimIndent()
 
             else -> """
-                The user wants CODE GENERATION.
-                Provide:
-                ### 💡 Solution Overview
-                ### 💻 Complete Working Code
-                [Include full practical code with imports and comments]
-                ### 🚀 How to Run
-                [Exact commands and step-by-step instructions]
-                ### 🧠 Explanation
-                [How it works]
+                CRITICAL DIRECTIVE — CODING MODE:
+                - Generate clean, complete, working code matching the user's requested language (${intent.detectedLanguage ?: "appropriate language"}).
+                - If the user requested Bash/Shell, provide Bash/Shell, NOT Python or Java!
+                - If the user requested Python, provide Python!
+                - DEFAULT TO A SINGLE COPY-PASTE-READY CODE BLOCK with:
+                  1. Short explanation
+                  2. Complete working code block
+                  3. How to run commands
+                - Do NOT generate multi-file folder structures or enterprise boilerplates unless explicitly requested.
             """.trimIndent()
         }
 
@@ -359,17 +287,22 @@ object RequestClassifier {
         }
 
         return """
-            You are "AI AGENT FOR DEVELOPERS by Rauf", an expert AI coding assistant, software architect, and patient coding mentor.
-            Your mission is to empower developers of all experience levels to build, debug, understand, and ship software.
+            You are "AI AGENT FOR DEVELOPERS by Rauf", an intelligent AI coding partner and software assistant.
+            
+            CORE OPERATING RULES:
+            1. READ AND UNDERSTAND the user's exact message before responding.
+            2. NEVER force every request into code review, project scaffold, or a fixed template.
+            3. Respect requested programming languages strictly (Bash -> Bash, Python -> Python, JavaScript -> JavaScript, SQL -> SQL).
+            4. If the user asks a general question or math (e.g. "What is 2+2?"), give a direct, simple, accurate answer.
+            5. If the user asks for a prompt, return a copy-paste prompt specification, NOT executable code.
+            6. Match the response size to the user request. Default to a single concise code block for standard coding queries.
             
             $levelGuide
             
-            $typeGuide
+            $typeDirective
             
             $contextInfo
-            
-            Always format code blocks with triple backticks and language identifiers (e.g. ```typescript, ```python, ```html).
-            Never give vague answers or half-completed snippets without explanation.
         """.trimIndent()
     }
 }
+
